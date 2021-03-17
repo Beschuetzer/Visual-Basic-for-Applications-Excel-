@@ -1,0 +1,478 @@
+'module used for calculating, sorting, and coppying scores
+Public ws_score As Worksheet, ws_grader As Worksheet, ws_arch As Worksheet, ws_chart As Worksheet
+Public rng_score As Range
+Public student_name As String
+Public gsr As String, gsc As String, ssr As String, ssc As String, asr As String, asc As String, stsr As String, stsc As String
+Public nsr As String, nsc As String, nbc As String, nbr As String, tsc As String, tsr As String, csr As String, csc As String
+
+'Grader Start Row, Strand Start Row, and Archiver Start Row
+Public Sub Initialize()
+    Set ws_score = Worksheets("Scores")
+    Set ws_grader = Worksheets("Grader")
+    Set ws_arch = Worksheets("Archiver")
+    Set ws_chart = Worksheets("Grading Charts")
+    gsr = "4" 'row on grader sheet for name start
+    gsc = "b" 'column on grader sheet for standard start
+    ssr = "2" 'row on score sheet for name start
+    ssc = "a" 'column on score sheet for name start
+    stsr = "4" 'strand row start
+    stsc = "h" 'strand start row
+    asr = "4" 'row on archiver sheet for name start
+    asc = "b" 'column on archiver sheet for name start
+    nsr = "1" 'row on score sheet for name start
+    nsc = "q" 'column on score sheet for name start
+    nbr = "1" 'row on grader sheet for name start
+    nbc = "b" 'column on grader sheet for name start
+    tsc = "b" 'column on score sheet for test start
+    tsr = "2" 'row on score sheet for test start
+    csr = "2" 'row on chart sheet for chart start
+    csc = "a" 'column on chart sheet for chart start
+End Sub
+
+Sub sort_change()
+    Dim i As Integer
+    Call Initialize
+    Dim copy_from, copy_to As Range
+    Set rng_score = ws_grader.Range(nsc + nsr, ws_grader.Range(nsc + nsr).End(xlDown))
+    
+    ws_grader.Unprotect
+    Call get_first_name
+    If InStr(ws_grader.Cells(CInt(nsr), CnvToNum(nsc) - 1).Value, "Kekai") Then
+        nsc2 = CnvToLet((CnvToNum(nsc) - 1))
+        ws_grader.Range(nsc2 + nsr, ws_grader.Range(nsc2 + nsr).End(xlDown)).Sort key1:=ws_grader.Range(nsc2 + nsr), order1:=xlAscending
+    Else
+        For Each cell In rng_score
+            cell.Offset(0, -1).Value = cell.Value
+        Next
+    End If
+    ws_grader.Protect
+End Sub
+
+Private Sub get_first_name()
+    For Each cell In rng_score
+        cell.Value = Split(cell.Value, " ")(0)
+    Next
+End Sub
+Sub get_student_scores()
+    Call Initialize
+    load_scores.Show
+End Sub
+
+Sub get_results()
+    Dim j As Integer
+    Dim strand_count As Integer, correct_count As Integer
+    Dim total_count As Integer
+    Call Initialize
+    student_name = Cells(nbr, nbc).Value
+    found = ws_grader.Range(nsc + nsr + ":" + nsc + "50").Find(what:=student_name, searchorder:=xlByRows, after:=Range(nsc + nsr), lookat:=xlWhole, LookIn:=xlFormulas, searchdirection:=xlPrevious).row
+    If student_name = vbNullString Then
+        MsgBox "Please enter the student's name"
+        End
+    End If
+    Call fill_blanks
+    ws_grader.Unprotect
+    Call get_totals
+    Call copy_over
+    Call copy_score_values(ws_score, ws_grader)
+    Call clear_fields
+    Range(nbc + nbr).Activate
+    ws_grader.Protect
+End Sub
+
+Private Sub copy_score_values(ByVal ws As Worksheet, ByVal from_ws As Worksheet)
+    res = get_serialized_score
+    ws.Unprotect
+    row = find_name_row(ws, from_ws.Cells(nbr, nbc).Value)
+    col = find_test_col(ws, from_ws.Cells(CInt(nbr) + 1, nbc).Value)
+    ws.Cells(row, col).Value = res
+    ws.Protect
+End Sub
+Public Function find_test_col(ByVal ws As Worksheet, ByVal t As String)
+    Call Initialize
+    res = find_last_col_absolute(ws, Range(ssc + ssr)) + 1
+    For Each cell In ws.Range(tsc + tsr, ws.Range(tsc + tsr).End(xlToRight))
+        If UCase(cell.Value) = UCase(t) Then
+            res = cell.Column
+            Exit For
+        End If
+    Next
+    'MsgBox "Res final: " & res
+    find_test_col = res
+End Function
+Public Function find_name_row(ByVal ws As Worksheet, ByVal n As String)
+    Call Initialize
+    For Each cell In ws.Range("a2", ws.Range("a2").End(xlDown))
+        If UCase(cell.Value) = UCase(n) Then
+            res = cell.row
+            Exit For
+        End If
+    Next
+    'MsgBox "Res final: " & res
+    find_name_row = res
+End Function
+
+Private Function get_serialized_score()
+    Call Initialize
+    Dim res As String
+    last_row = find_last_row(ws_grader.Range(gsc + gsr, ws_grader.Range(gsc + gsr).End(xlDown)))
+    i = 0
+    gsc2 = CnvToLet(CnvToNum(gsc) - 1)
+    For Each cell In ws_grader.Range(gsc2 + gsr + ":" + gsc2 + CStr(last_row))
+        If i = 0 Then
+            res = CStr(cell.Offset(0, 2).Value)
+        Else
+            res = res + "; " + CStr(cell.Offset(0, 2).Value)
+        End If
+        i = i + 1
+    Next
+    get_serialized_score = res
+End Function
+
+Public Sub get_totals()
+    Dim i As Integer, j As Integer
+    Dim j_let As String, k_let As String, l_let As String
+    j = setup_composite
+    n = stsr - 1
+    j_let = CnvToLet(CnvToNum(stsc) + 2)
+    k_let = CnvToLet(CnvToNum(stsc) + 3)
+    l_let = CnvToLet(CnvToNum(stsc) + 4)
+    Dim strand(1 To 15) As Integer
+    For i = 1 To j
+        correct_count = 0
+        total_count = 0
+        X = Cells(n + i, stsc).Value
+        For Each cell In ws_grader.Range(gsc + gsr, ws_grader.Range(gsc + gsr).End(xlDown))
+            If InStr(cell.Value, X) Then
+                correct_count = correct_count + Cells(cell.row, CnvToLet(CnvToNum(gsc) + 1))
+                total_count = total_count + Cells(cell.row, CnvToLet(CnvToNum(gsc) + 2))
+                If correct_count > total_count Then
+                    row2 = cell.row - CInt(gsr) + 1
+                    MsgBox "Check the scores again.  Number correct can't be higher than total" & vbCrLf & vbCrLf & "Invalid score at for question " & row2, vbCritical
+                    End
+                End If
+            End If
+        Next
+        Cells(n + i, j_let) = correct_count
+        Cells(n + i, k_let) = total_count
+        Cells(n + i, l_let) = "=" + j_let + CStr(n + i) + "/" + k_let + CStr(n + i)
+    Next i
+End Sub
+Private Function setup_composite()
+    Dim j As Integer
+    j = 0
+    For Each cell In ws_grader.Range(stsc + stsr, ws_grader.Range(stsc + stsr).End(xlDown))
+        If cell.Value <> "Composite" Then
+            j = j + 1
+        End If
+    Next
+    n = stsr - 1
+    Cells(stsr + j, stsc).Value = "Composite"
+    Cells(stsr + j, stsc).Font.Bold = True
+    Cells(stsr + j, "j").Value = "=SUM(J" + stsr + ":J" + CStr(n + j) + ")"
+    Cells(stsr + j, "k").Value = "=SUM(k" + stsr + ":k" + CStr(n + j) + ")"
+    Cells(stsr + j, "l").Value = "=j" + CStr(stsr + j) + "/k" + CStr(stsr + j)
+    setup_composite = j
+End Function
+
+Private Sub copy_over()
+    Dim strand As String, test As String
+    Dim total As Integer, correct As Integer, j As Integer, student_row As Integer, test_column As Integer
+    Dim found As Boolean
+    
+    'calculating number of strands
+    test = ws_grader.Cells(tsr, "b").Value
+    For Each cell In ws_grader.Range(stsc + stsr, ws_grader.Range(stsc + stsr).End(xlDown))
+        If cell.Value <> "Composite" Then
+            j = j + 1
+        End If
+    Next
+    
+    'finding column for test
+    last_col = find_last_col_absolute(ws_arch, ws_arch.Range("a1"))
+    last_col = CnvToLet(last_col)
+    For Each cell In ws_arch.Range("a1:" + CStr(last_col) + "1")
+        If InStr(UCase(cell.Value), UCase(test)) Then
+            'MsgBox "Found " & test & " at column: " & cell.Column
+            test_column = cell.Column
+            Exit For
+        End If
+    Next
+    
+    found = False
+    
+    'finding row for student
+    For Each cell In ws_arch.Range("a" + asr, ws_arch.Range("a" + asr).End(xlDown))                                                                               'finding student row
+        'MsgBox "Comparing " & UCase(cell.Value) & " to " & student_name
+        If UCase(cell.Offset(0, 1).Value) = UCase(student_name) Then
+            'MsgBox "Found " & student_name & " at row: " & Cell.row
+            found = True
+            student_row = cell.row
+            Exit For
+        End If
+    Next
+    If found = False Then
+        MsgBox student_name & " not found in the student name list.  Please check the spelling and try again :)"
+        Exit Sub
+    Else
+        ws_arch.Unprotect
+        For i = 0 To (j - 1)                                                                                                                'copying info
+            strand = ws_grader.Cells(CInt(stsr) + i, stsc).Value
+            correct = ws_grader.Cells(CInt(gsr) + i, "j").Value
+            total = ws_grader.Cells(CInt(gsr) + i, "k").Value
+            For Each cell In ws_arch.Range(CnvToLet(test_column) + "2", CnvToLet(test_column + j + 1) + "2")
+                If UCase(cell.Value) = UCase(strand) Then
+                    'MsgBox strand & " found at column: " & cell.Column
+                    ws_arch.Cells(CInt(asr) - 1, cell.Column) = CStr(total)
+                    If ws_arch.Cells(student_row, cell.Column) = vbNullString Then
+                        ws_arch.Cells(student_row, cell.Column) = correct
+                    Else
+                        MsgBox "Scores are already present for " & student_name & vbCrLf & "Please delete the scores on the archive page and try again if they are incorrect"
+                        ws_arch.Protect
+                        End
+                    End If
+                    Exit For
+                End If
+            Next
+        Next i
+        ws_arch.Protect
+        ws_grader.Activate
+    End If
+End Sub
+
+Private Sub fill_blanks()
+    For Each cell In Range("a" + gsr, Range("a" + gsr).End(xlDown))
+        If cell.Offset(0, 2).Value = vbNullString Then
+            cell.Offset(0, 2).Value = Cells(cell.row, cell.Column + 3).Value
+            'MsgBox Cells(cell.Row, cell.Column + 1).Value
+        End If
+    Next
+End Sub
+Sub clear_fields()
+    Call Initialize
+    For Each cell In ws_grader.Range("a" + gsr, ws_grader.Range("a" + gsr).End(xlDown))
+        cell.Offset(0, 2).Value = vbNullString
+    Next
+    ws_grader.Cells(1, 2).Value = vbNullString
+End Sub
+
+Public Function find_last_row(ByVal rng As Range)
+    ans = 0
+    For Each cell In rng
+       ' MsgBox cell.Value
+        If cell.Value <> vbNullString Then
+            ans = cell.row
+        End If
+    Next
+    find_last_row = ans
+End Function
+Public Function find_last_row_absolute(ByVal ws As Worksheet, ByVal rng As Range)
+        ans = ws.Cells.Find(what:="*", searchorder:=xlByRows, after:=rng, lookat:=xlPart, LookIn:=xlFormulas, searchdirection:=xlPrevious).row
+        find_last_row_absolute = CInt(ans)
+End Function
+Public Function find_last_col_absolute(ByVal ws As Worksheet, ByVal rng As Range)
+        ans = ws.Cells.Find(what:="*", searchorder:=xlByColumns, after:=rng, lookat:=xlPart, LookIn:=xlFormulas, searchdirection:=xlPrevious).Column
+        find_last_col_absolute = CInt(ans)
+End Function
+Public Function CnvToLet(ByVal n As Integer)
+    CnvToLet = Split(Cells(1, n).Address, "$")(1)
+End Function
+Public Function CnvToNum(ByVal l As String)
+    CnvToNum = Range(l & 1).Column
+End Function
+
+
+
+'purpose: to keep Excel window on top
+#If Win64 Then
+    Public Declare PtrSafe Function SetWindowPos _
+        Lib "user32" ( _
+            ByVal hwnd As LongPtr, _
+            ByVal hwndInsertAfter As LongPtr, _
+            ByVal x As Long, ByVal y As Long, _
+            ByVal cx As Long, ByVal cy As Long, _
+            ByVal wFlags As Long) _
+    As Long
+#Else
+    Public Declare Function SetWindowPos _
+        Lib "user32" ( _
+            ByVal hwnd As Long, _
+            ByVal hwndInsertAfter As Long, _
+            ByVal X As Long, ByVal y As Long, _
+            ByVal cx As Long, ByVal cy As Long, _
+            ByVal wFlags As Long) _
+    As Long
+#End If
+Public Const SWP_NOSIZE = &H1
+Public Const SWP_NOMOVE = &H2
+Public Const HWND_TOPMOST = -1
+Public Const HWND_NOTOPMOST = -2
+Sub ShowXLOnTop(ByVal OnTop As Boolean)
+    Dim xStype As Long
+    #If Win64 Then
+        Dim xHwnd As LongPtr
+    #Else
+        Dim xHwnd As Long
+    #End If
+    If OnTop Then
+        xStype = HWND_TOPMOST
+    Else
+        xStype = HWND_NOTOPMOST
+    End If
+    Call SetWindowPos(Application.hwnd, xStype, 0, 0, 0, 0, SWP_NOSIZE Or SWP_NOMOVE)
+End Sub
+Sub SetXLOnTop()
+    ShowXLOnTop True
+End Sub
+Sub SetXLNormal()
+    ShowXLOnTop False
+End Sub
+
+
+
+'purpose: All things Chart related
+
+Public last_row As Integer
+Public test As String, test_name As String
+Public continue As Boolean
+Public action As String
+Public number As Integer
+Public standard, total As String
+
+Sub run_add_chart()
+    Call Initialize
+    Dim i, r As Integer
+    Dim test_name As String
+    Dim last_row As Integer
+    Dim found As Boolean
+    ws_chart.Protect
+    ws_grader.Protect
+    continue = False
+    'loading UserForm
+    New_test.Show
+    If continue = False Then
+        End
+    End If
+    ws_chart.Unprotect
+    ws_grader.Unprotect
+    test_name = New_test.namebox.Value
+    
+    last_row = find_last_row_absolute(ws_chart, Range("A1"))
+    
+    'determining if chart already exists
+    found = Find_in_range(test_name, ws_chart, ws_chart.Range("a2:a" + CStr(last_row)), "b")
+    'Adding chart if new otherwise msgbox
+    If found = False Then
+        Call add_chart(test_name)
+        Call enter_chart(ws_chart, 1, last_row, test_name, standard, total)
+        ws_grader.Activate
+    Else
+        MsgBox test_name & " is already saved!  Maybe I should add a feature to override?"
+        ws_grader.Activate
+    End If
+    If New_test.enter_multiple.Value = True Then
+        Call run_add_chart
+    End If
+End Sub
+
+Sub run_load_chart()
+    Call Initialize
+    Dim standards_list() As String
+    Dim total_list() As String
+    Dim r As Integer
+    
+    last_row = find_last_row_absolute(ws_chart, Range("A1"))
+    Set data_validation_range = ws_chart.Range("a2:a" + CStr(last_row))
+    Set name_field = ws_grader.Range("b2")
+    
+    ws_grader.Unprotect
+    ws_chart.Unprotect
+    continue = False
+    
+    'showing UserForm
+    Load_test.Show
+    If continue = False Then
+        End
+    End If
+    
+    'finding the row of the selected test
+    r = Find_in_range(test, ws_chart, ws_chart.Range("a2"), "r") ' + CStr(last_row)))
+    
+    'clearing former test and loading test (test is set on load_test form)
+    If action = "load" Then
+        Call load_chart(ws_grader, ws_chart, r)
+        Columns("A:E").AutoFit
+    ElseIf action = "delete" Then
+        Call delete_chart_from_scores(Load_test.test_box.Value)
+        ws_chart.Rows(r).Delete
+        Call run_load_chart
+    End If
+    ws_grader.Protect
+    ws_chart.Protect
+End Sub
+Public Sub load_chart(ByVal to_ws As Worksheet, ByVal from_ws As Worksheet, ByVal r As Integer)
+    'getting standards and totals
+    to_ws.Range("a4:e17").ClearContents
+    standards_list = Split(from_ws.Cells(r, "b"), ";")
+    total_list = Split(from_ws.Cells(r, "c"), ";")
+    'iterating through an array
+    For i = LBound(standards_list) To UBound(standards_list)
+        to_ws.Cells(i + 4, "d").Value = total_list(i)
+        to_ws.Cells(i + 4, "b").Value = standards_list(i)
+    Next
+    n = 1
+    'adding numbers and percents
+    last_row = find_last_row(Range("b4", Range("b4").End(xlDown)))
+    For Each cell In Range("b4:b" + CStr(last_row))
+        cell.Offset(0, -1).Value = n
+        row = CStr(n + 3)
+        cell.Offset(0, 3).Value = "=c" + row + "/d" + row
+        n = n + 1
+    Next
+End Sub
+Private Sub add_chart(ByVal t As String)
+    Dim next_col As Integer
+    ws_score.Unprotect
+    next_col = find_last_col_absolute(ws_score, Range("a2")) + 1
+    ws_score.Cells(2, next_col).Value = t
+    ws_score.Cells(2, next_col).Font.Bold = True
+    ws_score.Cells(2, next_col).Font.Size = 12
+    ws_score.Protect
+End Sub
+
+Private Sub delete_chart_from_scores(ByVal t As String)
+    Dim res As Integer
+    last_col = find_last_col_absolute(ws_score, Range("a2"))
+    res = CInt(Find_in_range(t, ws_score, ws_score.Range("b2"), "c"))
+    ws_score.Unprotect
+    ws_score.Columns(res).EntireColumn.Delete
+    ws_score.Protect
+End Sub
+Public Function Find_in_range(ByVal target As String, ByVal to_ws As Worksheet, ByVal rng As Range, Optional ByVal situation As String)
+    found = False
+    If UCase(situation) = "B" Then
+        For Each cell In rng
+            'MsgBox "Comparing " & UCase(cell.Value) & " to " & UCase(target)
+            If UCase(cell.Value) = UCase(target) Then
+                found = True
+                Exit For
+            End If
+        Next
+        Find_in_range = found
+    ElseIf UCase(situation) = "C" Then
+        Find_in_range = to_ws.Cells.Find(what:=target, searchorder:=xlByColumns, after:=rng, lookat:=xlWhole, LookIn:=xlFormulas, searchdirection:=xlPrevious).Column
+    ElseIf UCase(situation) = "R" Then
+        Find_in_range = to_ws.Cells.Find(what:=target, searchorder:=xlByRows, after:=rng, lookat:=xlWhole, LookIn:=xlFormulas, searchdirection:=xlPrevious).row
+    End If
+End Function
+Private Sub enter_chart(ByVal ws As Worksheet, col As Integer, last As Integer, ByVal name As String, ByVal std As String, ByVal tot As String)
+    ws.Unprotect
+    ws.Activate
+    With to_ws
+        Cells(last + 1, col).Value = name
+        Cells(last + 1, col + 1).Value = std
+        Cells(last + 1, col + 2).Value = tot
+        Range(CnvToLet(col) + "2:" + CnvToLet(col + 2) + CStr(last + 1)).Sort key1:=Range(CnvToLet(col) + "2"), order1:=xlAscending
+    End With
+    ws.Protect
+    MsgBox "Saved chart for " & name
+End Sub
