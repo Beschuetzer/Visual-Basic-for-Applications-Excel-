@@ -1,0 +1,375 @@
+Public input_prompt As String
+Public send_which, column_num As Integer
+Public stop_macro As Boolean
+Public last_row, row_num_money, row_num_name, num_of_name_msgs, num_of_money_msgs As Integer
+Public msgs_name As New Collection
+Public msgs_money As New Collection
+Public i, n, sms_length As Integer
+Dim colMatches As MatchCollection
+
+Sub execute_all()
+    sms_length = 146
+    column_num = 4
+    row_num_name = 33
+    row_num_money = (row_num_name + 1)
+    last_row = find_last_row
+    input_prompt = vbNullString
+    stop_macro = False
+    Call get_names
+    Call get_money
+    Call get_num_of_msgs
+    Call populate_dictionaries
+    ubox1.Show
+    
+    If send_which = 0 Then
+        For Each Item In msgs_name
+            Call send_email(CStr(Item))
+        Next
+    ElseIf send_which = 1 Then
+        For Each Item In msgs_money
+            Call send_email(CStr(Item))
+        Next
+    ElseIf send_which = 2 Then
+        For Each Item In msgs_name
+            Call send_email(CStr(Item))
+        Next
+        For Each Item In msgs_money
+            Call send_email(CStr(Item))
+        Next
+    End If
+    
+    
+End Sub
+Private Sub populate_dictionaries()
+    Dim msg As String
+    Set msgs_money = Nothing
+    Set msgs_name = Nothing
+    msg_length = Len(Cells(row_num_name, column_num).Value)
+    msg = Cells(row_num_name, column_num).Value
+    For i = 1 To (num_of_name_msgs + 1)
+        If Len(msg) <= 1 Then
+            Exit For
+        End If
+        cut_off = last_word(msg, ",")
+        'MsgBox "Length of message: " & Len(msg)
+        'MsgBox "Original Message: " & msg
+        'MsgBox "Trimmed Message: " & Left(msg, cut_off)
+        msgs_name.Add (Left(msg, cut_off))
+        msg = Mid(msg, cut_off + 2, msg_length - cut_off)
+    Next i
+    
+    msg_length = Len(Cells(row_num_money, column_num).Value)
+    msg = Cells(row_num_money, column_num).Value
+    For i = 1 To (num_of_money_msgs + 1)
+        cut_off = last_word(msg, "=")
+        'MsgBox "Length of message: " & Len(msg)
+       ' MsgBox "Original Message: " & msg
+        'MsgBox "Trimmed Message: " & Left(msg, cut_off)
+        If Len(msg) <= 1 Then
+            Exit For
+        End If
+        msgs_money.Add (Left(msg, cut_off))
+        msg = Mid(msg, cut_off + 2, msg_length - cut_off)
+    Next i
+    
+'    For Each Item In msgs_name
+'        MsgBox Item & vbCrLf & Len(Item)
+'    Next
+
+'    For Each Item In msgs_money
+'        MsgBox Item & vbCrLf & Len(Item)
+'    Next
+    
+    
+End Sub
+Function last_word(x As String, delim As String)
+    If Len(x) > sms_length Then
+        For n = sms_length To 1 Step -1
+            'MsgBox Mid(x, n, 1)
+            If Mid(x, n, 1) = delim Then
+                'MsgBox "Found " & delim & " at " & n
+                If delim = "=" Then
+                    last_word = n + 2
+                Else
+                    last_word = n
+                End If
+                Exit For
+            Else
+                'MsgBox "No delim at " & n
+            End If
+        Next n
+    Else
+        last_word = Len(x)
+    End If
+    'MsgBox "Cut off is " & last_word
+End Function
+Private Sub get_num_of_msgs()
+    If Len(Cells(row_num_name, column_num).Value) > sms_length Then
+        num_of_name_msgs = RoundUp(Len(Cells(row_num_name, column_num).Value) / sms_length)
+    End If
+    If Len(Cells(row_num_money, column_num).Value) > sms_length Then
+        num_of_money_msgs = RoundUp(Len(Cells(row_num_money, column_num).Value) / sms_length)
+    End If
+End Sub
+Private Sub get_names()
+    Dim i As Integer
+    i = 0
+    Cells(row_num_name, column_num).Value = ""
+    For Each cell In Range("c2:c" + CStr(last_row))
+        If cell.Value = 0 Then
+            If i = 0 Then
+                Cells(row_num_name, column_num).Value = "Need Orders for:" + vbCrLf + CStr(cell.Offset(0, -2).Value)
+                i = i + 1
+            Else
+                Cells(row_num_name, column_num).Value = Cells(row_num_name, column_num).Value + ", " + CStr(cell.Offset(0, -2).Value)
+                i = i + 1
+            End If
+        End If
+    Next
+End Sub
+
+Sub get_money()
+    Dim i As Integer
+    i = 0
+    Cells(row_num_money, column_num).Value = ""
+    For Each cell In Range("d2:d" + CStr(last_row))
+        If cell.Value <> cell.Offset(0, 1).Value Then
+            If i = 0 Then
+                Cells(row_num_money, column_num).Value = "Students Who Owe:" + vbCrLf + CStr(cell.Offset(0, -3).Value) + "=$" + CStr(cell.Value - cell.Offset(0, 1).Value)
+            Else
+                Cells(row_num_money, column_num).Value = Cells(row_num_money, column_num).Value + vbCrLf + CStr(cell.Offset(0, -3).Value) + "=$" + CStr(cell.Value)
+            End If
+            i = i + 1
+        End If
+    Next
+End Sub
+
+Private Sub send_email(strBody As String)
+    Dim CDO_Mail As Object
+    Dim CDO_Config As Object
+    Dim SMTP_Config As Variant
+    Dim strFrom As String
+    Dim strTo As String
+    Dim strCc As String
+    Dim strBcc As String
+    Dim strSubject As String
+    
+    strSubject = ""
+    strFrom = "der_beschuetzer1111@comcast.net"
+    If ubox1.send_adam.Value = True Then
+        strTo = "6122062281@vtext.com"
+    Else
+        strTo = "7638071504@vtext.com; 6122062281@vtext.com"
+    End If
+   ' MsgBox strTo
+    strCc = ""
+    strBcc = ""
+
+    Set CDO_Mail = CreateObject("CDO.Message")
+    On Error GoTo Error_Handling
+    
+    Set CDO_Config = CreateObject("CDO.Configuration")
+    CDO_Config.Load -1
+    
+    Set SMTP_Config = CDO_Config.Fields
+
+    If stop_macro = False Then
+        With SMTP_Config
+         .Item("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2
+         .Item("http://schemas.microsoft.com/cdo/configuration/smtpserver") = "smtp.comcast.net"
+         .Item("http://schemas.microsoft.com/cdo/configuration/smtpauthenticate") = 1
+         .Item("http://schemas.microsoft.com/cdo/configuration/sendusername") = "der_beschuetzer1111"
+         .Item("http://schemas.microsoft.com/cdo/configuration/sendpassword") = input_prompt
+         .Item("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = 25
+         .Item("http://schemas.microsoft.com/cdo/configuration/smtpusessl") = True
+         .Update
+        End With
+        
+        With CDO_Mail
+         Set .Configuration = CDO_Config
+        End With
+        
+        CDO_Mail.Subject = strSubject
+        CDO_Mail.From = strFrom
+        CDO_Mail.To = strTo
+        CDO_Mail.TextBody = strBody
+        CDO_Mail.CC = strCc
+        CDO_Mail.BCC = strBcc
+        CDO_Mail.send
+    End If
+    
+Error_Handling:
+    If Err.Description <> "" Then MsgBox Err.Description
+End Sub
+    
+Sub consolidate_item_number()
+    Dim temp, temp2 As String
+    Dim temp_row
+    
+    For Each cell In Worksheets("Price List").Range("A:A")
+        If cell.Value = "X" Or cell.Value = "K" Or cell.Value = "L" Then                                         'merge cell, the one above it, and the one below
+            'MsgBox "Row " & cell.Row & " is X"
+            temp = cell.Offset(-1, 0).Value
+            temp2 = cell.Offset(1, 0).Value
+            temp_row = cell.row
+            cell.Offset(-1, 0).Value = CStr(temp) + CStr(cell.Value) + CStr(temp2)
+            Rows(temp_row).Delete
+            Rows(temp_row).Delete
+        ElseIf cell.Value = "X2" Or cell.Value = "X1" Or cell.Value = "K1" Or cell.Value = "K2" Or cell.Value = "L1" Or cell.Value = "L2" Or cell.Value = "C1" Then             'merge cell and the one above it
+            'MsgBox "Row " & cell.Row & " is X2"
+            temp = cell.Offset(-1, 0).Value
+            cell.Offset(-1, 0).Value = CStr(temp) + CStr(cell.Value)
+            Rows(cell.row).Delete
+        ElseIf cell.Value = "†" Then
+            Rows(cell.row).Delete
+        ElseIf cell.Value = "7.0 0" Then
+            cell.Value = 7
+        ElseIf cell.Value = "7. 5 0" Then
+            cell.Value = 7.5
+        End If
+    Next
+End Sub
+Sub test()
+    Dim pattern As String
+    
+    pattern = "\s?[0-9]*[xXcClL][0-9]+\s?"
+    MsgBox TypeName(pattern)
+     
+    Call find_matches(pattern, Selection)
+End Sub
+Sub manual_parse_string()
+    Dim pattern As String
+    Dim j As Integer
+    
+    Rows(Selection.row + 1).Insert
+    Rows(Selection.row + 1).Insert
+    Rows(Selection.row + 1).Insert
+    pattern = "\s?[0-9]*[xXcClLkK][0-9]+\s?"
+    Call find_matches(pattern, Selection)
+    'MsgBox "Colmatches length: " & colMatches.Count
+    start_loc = colMatches.Item(Int(0)).FirstIndex + 1
+    Cells(Int(Selection.row + 1), "a").Value = Trim(Mid(Selection, start_loc, Len(colMatches.Item(0))))
+
+    Cells(Int(Selection.row + 2), "a").Value = Trim(Mid(Selection, 6))
+    
+    pattern = " \$?[0-9]+\.?[0-9]*$"      ' old one = "[0-9]+\.[0-9]+"
+    Call find_matches(pattern, Selection)
+    start_loc = colMatches.Item(Int(0)).FirstIndex + 1
+    Cells(Int(Selection.row + 3), "a").Value = Trim(Mid(Selection, start_loc, Len(colMatches.Item(0))))
+    Rows(Selection.row).Delete
+End Sub
+Sub parse_string_into_chunks()
+    Dim pattern As String
+    
+    pattern = "\s?[0-9]*[xXcClLkKyY][0-9]+\s?"
+    Call find_matches(pattern, Selection)
+    i = 0
+    n = 1
+    'MsgBox colMatches.Count
+    For Each beg In colMatches
+        start_loc = colMatches.Item(Int(i)).FirstIndex + 1
+            If Int(i + 1) <> colMatches.Count Then
+                end_loc = Int(colMatches.Item(Int(i + 1)).FirstIndex)
+            Else
+                end_loc = Len(Selection)
+            End If
+        i = i + 1
+        Cells(Int(Selection.row + i), "a").Value = Trim(Mid(Selection, start_loc, Int(end_loc - start_loc + 1)))
+    Next
+
+    beg_range = "a" + Trim(str(Selection.row + 1))
+    end_range = "a" + Trim(str(Selection.row + i))
+    'MsgBox BEG_RANGE & vbCrLf & end_range
+    'Need to break down the individual strings
+    For Each cell In Range(beg_range + ":" + end_range)
+        'MsgBox cell.Value
+        Call parse_sub_string(cell.Value, cell.row)
+    Next
+
+    Range(beg_range + ":" + end_range).Delete
+    Selection.Delete
+End Sub
+Private Sub parse_sub_string(str As String, row As Integer)
+    Dim pattern As String
+    
+    pattern = "(\s?[0-9]*[xXcClLkKyY][0-9]+\s?)"
+    Call find_matches(pattern, str)
+    'MsgBox "Colmatches length: " & colMatches.Count
+    start_loc = colMatches.Item(Int(0)).FirstIndex + 1
+    'MsgBox start_loc & vbCrLf & end_loc
+    Cells(Int(row + n + i), "a").Value = Trim(Mid(str, start_loc, Len(colMatches.Item(0))))
+    n = n + 1
+    
+    Cells(Int(row + n + i), "a").Value = Trim(Mid(str, 6))
+    n = n + 1
+    
+    pattern = " \$?[0-9]+\.?[0-9]*$"
+    'MsgBox pattern & vbCrLf & str
+    Call find_matches(pattern, str)
+    'MsgBox "Colmatches length: " & colMatches.Count
+'    For Each Item In colMatches
+'        MsgBox Item
+'    Next
+    start_loc = colMatches.Item(Int(0)).FirstIndex + 1
+    'MsgBox start_loc & vbCrLf & end_loc
+    Cells(Int(row + n + i), "a").Value = Trim(Mid(str, start_loc, Len(colMatches.Item(0))))
+    n = n + 1
+End Sub
+
+Private Sub find_matches(myPattern As String, myString As String)
+   'Create objects.
+   Dim objRegExp As RegExp
+   Dim objMatch As Match
+   Set colMatches = Nothing
+   Dim RetStr As String
+
+   ' Create a regular expression object.
+   Set objRegExp = New RegExp
+
+   'Set the pattern by using the Pattern property.
+   objRegExp.pattern = myPattern
+
+   ' Set Case Insensitivity.
+   objRegExp.IgnoreCase = True
+
+   'Set global applicability.
+   objRegExp.Global = True
+
+   'Test whether the String can be compared.
+   If (objRegExp.test(myString) = True) Then
+
+   'Get the matches.
+    Set colMatches = objRegExp.Execute(myString)   ' Execute search.
+
+    For Each objMatch In colMatches   ' Iterate Matches collection.
+      RetStr = RetStr & "Match found at position "
+      RetStr = RetStr & objMatch.FirstIndex & ". Match Value is '"
+      RetStr = RetStr & objMatch.Value & "'." & vbCrLf
+    Next
+   Else
+    RetStr = "String Matching Failed"
+   End If
+End Sub
+Function find_last_row()
+    For Each cell In Range("b:b")
+        If cell.Value <> vbNullString Then
+            find_last_row = cell.row
+        Else
+            Exit For
+        End If
+    Next
+End Function
+Function RoundUp(ByVal Value As Double)
+    If Int(Value) = Value Then
+        RoundUp = Value
+    Else
+        RoundUp = Int(Value) + 1
+    End If
+End Function
+Public Function printf(mask As String, ParamArray tokens()) As String
+    Dim i As Long
+    For i = 0 To UBound(tokens)
+        mask = Replace$(mask, "{" & i & "}", tokens(i))
+    Next
+    printf = mask
+End Function
